@@ -1,0 +1,6 @@
+\\asus\Eigene Dateien\VisualStudioProjekte\C#\DS18B20UART\DS18B20UART\bin\Debug\DS18B20UART.exe.config
+\\asus\Eigene Dateien\VisualStudioProjekte\C#\DS18B20UART\DS18B20UART\bin\Debug\DS18B20UART.exe
+\\asus\Eigene Dateien\VisualStudioProjekte\C#\DS18B20UART\DS18B20UART\bin\Debug\DS18B20UART.pdb
+\\asus\Eigene Dateien\VisualStudioProjekte\C#\DS18B20UART\DS18B20UART\obj\Debug\DS18B20UART.csprojResolveAssemblyReference.cache
+\\asus\Eigene Dateien\VisualStudioProjekte\C#\DS18B20UART\DS18B20UART\obj\Debug\DS18B20UART.exe
+\\asus\Eigene Dateien\VisualStudioProjekte\C#\DS18B20UART\DS18B20UART\obj\Debug\DS18B20UART.pdb
