@@ -1,9 +1,9 @@
 # DS18B20-UART
 DS18B20 an PC Com Port C#
 
-Kleine Inspiration OnWire DS18B20 Temperatur Sensor an Serieller Schnitstelle zu betreiben.
+Kleine Inspiration OnWire DS18B20 Temperatur Sensor an Serieller Schnitstelle zu betreiben. Am besten mit +5V,GND,RX,TX (4 Pins)
 
-Es wird ein USB2Seriell Konverter benötigt und kleine Schaltung um den TTL aut in einen Open Kollektor umzuwandeln.
+Es wird ein USB2Seriell Konverter benötigt und kleine Schaltung um den TTL TX in einen Open Kollektor umzuwandeln. Der RX geht direkt an den DS Pin. Der UART verhaltet sich dann wie ein Loobback. (RX,TX kurz geschlossen)
 
 Basis für die low level Kommunikation ist das APP214 von MAXIM
 https://www.maximintegrated.com/en/app-notes/index.mvp/id/214
