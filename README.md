@@ -11,5 +11,6 @@ https://www.maximintegrated.com/en/app-notes/index.mvp/id/214
 Die Mos Bausteine im Figure 2a. des Discrete open-drain buffer könne auch gegen normale Transistoren z.B BC548 ersetzt werden.
 In der Program.cs ist natürlich der entsprechende COM Port anzupassen.
 
+Die Search Funktion ist komplett von mir geschrieben. Sie baut auf keiner der üblichen Anleitungen im Internet auf. Alle von mir getestetetn Sensoren haben zumidest funktioniert.
 
 Viel Spaß
