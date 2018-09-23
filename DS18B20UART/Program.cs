@@ -1,11 +1,10 @@
-﻿using System;
+﻿//#define MATCH_ROM
+
+using System;
 using System.Collections;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-using System.IO.Ports;
 using DS18B20UART_OW;
+
+
 
 
 namespace DS18B20UART
@@ -24,7 +23,7 @@ namespace DS18B20UART
 
 
 
-        static DS18B20 sensor = new DS18B20("COM16");
+        static DS18B20 sensor = new DS18B20("COM27");
 
         
 
@@ -76,35 +75,36 @@ namespace DS18B20UART
 
     */
 
-
-
             while (true)
             {
                 Console.Clear();
 
+#if !MATCH_ROM
                 //Skip Rom
                 StartConvertion(true);
+#endif
 
                 for (byte iy = 0; iy < Sensors.Count; iy++)
                 {
+                    //Sensor Adresse in Buffer laden
                     for (byte ix = 0; ix < 8; ix++) sensor.ByteToBuffer(((byte[])Sensors[iy])[ix], (byte)(ix + 1));
+                    //for (byte ix = 0; ix < 8; ix++) sensor.ByteToBuffer(((byte[])Sensors[iy])[ix], (byte)(ix + 1));
 
-                    //Ohne SkipRom
-                   // StartConvertion(false);
+#if MATCH_ROM
+                    //Ohne SkipRom, Match ROM
+                    StartConvertion(false);
+#endif
+
                     ReadScratchPad();
 
                 }
-                System.Threading.Thread.Sleep(5000);
+                Console.WriteLine("Nächste Messung Taste drücken");
+                Console.ReadKey();
+                //System.Threading.Thread.Sleep(5000);
             }
 
         }
 
-        static void PrintBytes(byte[] b)
-        {
-            for (byte ix = 0; ix < b.Length - 1; ix++) Console.Write("{0:x2}:", b[ix]);
-            Console.WriteLine("{0:x2}", b[b.Length - 1]);
-
-        }
         /// <summary>
         /// 
         /// </summary>
@@ -121,20 +121,27 @@ namespace DS18B20UART
             }
 
 
-            //Select Sensor
-            Console.Write("Select Sensor ");
-
-            Address = sensor.BufferToBytes(8, 8);
-            PrintBytes(Address);
 
 
-            //Transfer Command und Sensor Adresse 8 Bytes
-            if (SkipRom) sensor.Transfer(DS18B20.Command.SkipRom);
-            else sensor.Transfer(DS18B20.Command.MatchRom, 8);
+           
+            if (SkipRom)
+            {
+                Console.WriteLine("Skip ROM, alle Sensoren messen zusammen ");
+                sensor.Transfer(DS18B20.Command.SkipRom);
+            }
+            else
+            {
+                //Select Sensor
+                Console.Write("Match ROM jeder Sensor misst Separat. Select Sensor ");
+                Address = sensor.BufferToBytes(8, 8);
+                PrintBytes(Address);
 
+                //Transfer Command und Sensor Adresse 8 Bytes
+                sensor.Transfer(DS18B20.Command.MatchRom, 8);
+            }
 
             //Start Temp Convertion nur Command
-            Console.WriteLine("Start Convertion");
+            Console.WriteLine("Start Convertion\r\n");
             sensor.Transfer(DS18B20.Command.ConvertT);
 
             //Datenblatt max Convertion Time
@@ -154,14 +161,16 @@ namespace DS18B20UART
             }
 
             //Select Sensor
-            Console.WriteLine("Select Sensor wie vorher");
-            sensor.Transfer(DS18B20.Command.MatchRom, 8);
-
             Console.WriteLine("Read Scratchpad");
+            Console.Write("Sensor Address:\t");
+
+            PrintBytes(sensor.BufferToBytes(8, 8));
+
+            //Transfer Command und Sensor Adresse 8 Bytes
+            sensor.Transfer(DS18B20.Command.MatchRom,8);
             bytes = sensor.Transfer(DS18B20.Command.ReadScratchpad, 9);
 
-
-            Console.Write("Scratchpad ");
+            Console.Write("Scratchpad:\t");
             PrintBytes(bytes);
 
 
@@ -170,6 +179,13 @@ namespace DS18B20UART
             Console.WriteLine("Temp: {0}°C\r\n", sensor.GetTemp());
             Console.ResetColor();
         }
-    }
+
+        static void PrintBytes(byte[] b)
+        {
+            for (byte ix = 0; ix < b.Length - 1; ix++) Console.Write("{0:x2}:", b[ix]);
+            Console.WriteLine("{0:x2}", b[b.Length - 1]);
+
+        }
+    } 
 
 }

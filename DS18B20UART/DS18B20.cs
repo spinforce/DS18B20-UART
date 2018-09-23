@@ -8,11 +8,10 @@ using System.Threading.Tasks;
 using System.Runtime.InteropServices;
 
 
+
+
 namespace DS18B20UART_OW
 {
-
-
-
     class DS18B20
     {
 
@@ -38,6 +37,7 @@ namespace DS18B20UART_OW
             _sPort = new SerialPort();
 
             //Command 1byte + Scratch 9byte oder Rom 8 byte 0-7 Command 8- Data
+            //Ein Byte im Buffer entspricht einem Bit
             Buffer = new byte[8 * 10];
 
             _sPort.PortName = Port;
@@ -72,7 +72,11 @@ namespace DS18B20UART_OW
             }
             return false;
         }
-
+        /// <summary>
+        /// Sucht Bus nach Sensoren
+        /// </summary>
+        /// <param name="Address">Referenz auf Byte Array, gibt Adresse zurück</param>
+        /// <returns>Letzter sensor = false</returns>
        public bool Search(ref byte[] Address)
         {
             if (LastDevice || Devices < 1 ) return true;
@@ -88,6 +92,7 @@ namespace DS18B20UART_OW
 
             for (byte BitsPos = 0; BitsPos < 8 * 8; BitsPos++)
             {
+
                 ByteToBuffer(3, 0); //0b00000011
 
                 //Get Payload
@@ -113,7 +118,7 @@ namespace DS18B20UART_OW
                         break;
 
                     case 3:
-                        //Fehler
+                        //Fehler ToDo...
                         break;
                 }
                 //Im Datenbuffer ist das nächste Kommando enthalen
@@ -193,8 +198,14 @@ namespace DS18B20UART_OW
             while (_sPort.BytesToRead != count) System.Threading.Thread.Sleep(1);
             _sPort.Read(Buffer, 0, count);
         }
-        
- 
+
+        /// <summary>
+        /// Verteilt Bits eines Byte an angegebener Position in den Buffer.
+        /// z.B. Byte = 0xf0 Buffer = {0x00,0x00,0x00,0x00,0xff,0xff,0xff,0xff} LSB beginnend. 
+        /// Pos 0 = Command 
+        /// </summary>
+        /// <param name="b">Byte</param>
+        /// <param name="pos">Byte Position im Buffer</param>
         public void ByteToBuffer(byte b, byte pos)
         {
             byte rol = 0x1;
@@ -211,6 +222,14 @@ namespace DS18B20UART_OW
             ByteToBuffer((byte)c, pos);
         }
 
+        /// <summary>
+        /// Setzt die Bytes entsprechent Bits im Buffer wieder zu einem Byte Array zusammen.
+        /// z.B.: count=2 Buffer an Pos = {0x00,0x00,0x00,0x00,0xff,0xff,0xff,0xff, 0xff,0x00,0x00,0x00,0xff,0xff,0xff,0x00}
+        /// Ergibt {0xf0,0x71}
+        /// </summary>
+        /// <param name="offset">Postition im Buffer</param>
+        /// <param name="count">Anzahl Bit-Bytes</param>
+        /// <returns></returns>
         public byte[] BufferToBytes(byte offset, byte count)
         {
 
