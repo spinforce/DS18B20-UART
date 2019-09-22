@@ -2,6 +2,7 @@
 
 using System;
 using System.Collections;
+using System.Collections.Generic;
 using DS18B20UART_OW;
 
 
@@ -11,30 +12,25 @@ namespace DS18B20UART
 {
     class Program
     {
-        //static byte[] mySensor = { 0x28, 0x95, 0xa8, 0x27, 0x00, 0x00, 0x80, 0x33 };
-        //static byte[] mySensor = { 0x28, 0x3a, 0xf9, 0x27, 0x00, 0x00, 0x80, 0x13 };
-       // static byte[] mySensor = { 0x28, 0x77, 0x99, 0x27, 0x0, 0x0, 0x80, 0x3d }; 
+
+       
+           
+        static DS18B20_SctatchPad ScratchPad = new DS18B20_SctatchPad();
 
 
-        static byte[] bytes;
-        static byte[] Address = new byte[8];
-
-        static ArrayList Sensors = new ArrayList(8);
-
-
-
-        static DS18B20 sensor = new DS18B20("COM27");
-
-        
 
 
         static void Main(string[] args)
         {
 
+            Console.Clear();
+           // DS18B20 sensor = new DS18B20("COM27");
+            DS18B20 sensor = new DS18B20("COM2");
+
+            DS18B20_Address SensorAddress = new DS18B20_Address();
+            List<DS18B20_Address> SensorAddresses = new List<DS18B20_Address>(8);
 
             //********************* Ist wer da ? ********************************
-            Console.Clear();
-
             if (!sensor.Reset())
             {
                 Console.WriteLine("Nix Sensor\r\n");
@@ -44,23 +40,41 @@ namespace DS18B20UART
             Console.WriteLine("Sensor da :-)\r\n");
 
 
+           
 
-
-            while (!sensor.Search(ref Address))
+            while (!sensor.Search(ref SensorAddress))
             {
 
                 Console.Write("Sensor ");
+  
+                //PrintBytes(Address);
+                Console.WriteLine("Adresse:\t{0}",SensorAddress.Address);
+                Console.WriteLine("CRC:\t\t{0}", SensorAddress.CRC.ToString("x2"));
+                Console.Write("CRC Check\t{0:x2} ", DS18B20.CRC8(SensorAddress));
+               
+                Console.WriteLine("{0}", SensorAddress.CheckCRC() ? "OK":"Fehler");
+                Console.WriteLine("Seriennummer:\t{0}", SensorAddress.ToString("SN"));
+                Console.WriteLine("Device Typ:\t{0}\r\n", SensorAddress.ToString("DEV"));
+              
 
-                PrintBytes(Address);
+                SensorAddresses.Add(SensorAddress);
 
-                Sensors.Add(Address);
+                
+               
+               
 
                 sensor.Reset();
-
+                
             }
 
             Console.WriteLine("{0} Sensor(en) gefunden", sensor.Devices);
-            System.Threading.Thread.Sleep(2000);
+            Console.WriteLine("Weiter Taste drücken");
+            Console.ReadKey();
+
+     
+
+
+
 
 
             //********************* Nur ein Sensor am Bus. Wer da ist da ? ********************************
@@ -75,32 +89,67 @@ namespace DS18B20UART
 
     */
 
+
+            //Beispiel
+            //Ersten Sensor auf 12 Bit umstellen
+            //MatchRom = Gezielt Sensor auswählen, Skiprom = alle Sensoren
+
+            //Aktuelles Scratchpad auslesen
+
+            //Sensor Adresse in Buffer laden
+            sensor.SetSensorAddress(SensorAddresses[0]);
+            sensor.Transfer(DS18B20.Command.MatchRom, DS18B20.TranferCounts.MatchRom);
+            ScratchPad = sensor.Transfer(DS18B20.Command.ReadScratchpad, DS18B20.TranferCounts.ReadScratchpad);
+
+            DS18B20_SctatchPad.Resolution r = DS18B20_SctatchPad.Resolution.Bits12;
+
+
+            if (ScratchPad.ConfigRegister != r)
+            {
+                Console.WriteLine("Configregister auf gewünschte Auflösung umstellen");
+                sensor.Reset();
+
+                //Config Register auf 12Bit Setzen
+                ScratchPad.ConfigRegister = r;
+
+                //Sensor Adresse in Buffer laden
+
+                sensor.SetSensorAddress(SensorAddresses[0]);
+                sensor.Transfer(DS18B20.Command.MatchRom, DS18B20.TranferCounts.MatchRom);
+
+                //Die 3 Bytes aus dem Scratchpad retour schreiben
+                sensor.Scratchpad2Buffer(ScratchPad.SerializeForWrite());
+                sensor.Transfer(DS18B20.Command.WriteScratchpad, DS18B20.TranferCounts.WriteScratchpad);
+            }
+            else Console.WriteLine("Configregister hat bereits die gewünschte Auflösung");
+
+            System.Threading.Thread.Sleep(2000);
+
             while (true)
             {
                 Console.Clear();
 
 #if !MATCH_ROM
                 //Skip Rom
-                StartConvertion(true);
+                StartConvertion(true,ref sensor);
 #endif
 
-                for (byte iy = 0; iy < Sensors.Count; iy++)
+                for (byte iy = 0; iy < SensorAddresses.Count; iy++)
                 {
                     //Sensor Adresse in Buffer laden
-                    for (byte ix = 0; ix < 8; ix++) sensor.ByteToBuffer(((byte[])Sensors[iy])[ix], (byte)(ix + 1));
-                    //for (byte ix = 0; ix < 8; ix++) sensor.ByteToBuffer(((byte[])Sensors[iy])[ix], (byte)(ix + 1));
+                   sensor.SetSensorAddress(SensorAddresses[iy]);
 
 #if MATCH_ROM
                     //Ohne SkipRom, Match ROM
-                    StartConvertion(false);
+                    StartConvertion(false,ref sensor);
 #endif
 
-                    ReadScratchPad();
+                    ReadScratchPad(ref sensor);
 
                 }
-                Console.WriteLine("Nächste Messung Taste drücken");
-                Console.ReadKey();
-                //System.Threading.Thread.Sleep(5000);
+                //Console.WriteLine("Nächste Messung Taste drücken");
+                //Console.ReadKey();
+                System.Threading.Thread.Sleep(5000);
             }
 
         }
@@ -109,7 +158,7 @@ namespace DS18B20UART
         /// 
         /// </summary>
         /// <param name="SkipRom">true SkipROM oder nicht</param>
-        static void StartConvertion(bool SkipRom)
+        static void StartConvertion(bool SkipRom,ref DS18B20 sensor)
         {
             //********************* Start Convertion ********************************
 
@@ -121,9 +170,6 @@ namespace DS18B20UART
             }
 
 
-
-
-           
             if (SkipRom)
             {
                 Console.WriteLine("Skip ROM, alle Sensoren messen zusammen ");
@@ -133,11 +179,12 @@ namespace DS18B20UART
             {
                 //Select Sensor
                 Console.Write("Match ROM jeder Sensor misst Separat. Select Sensor ");
-                Address = sensor.BufferToBytes(8, 8);
-                PrintBytes(Address);
+
+
+                Console.WriteLine(sensor.GetSensorAddress());
 
                 //Transfer Command und Sensor Adresse 8 Bytes
-                sensor.Transfer(DS18B20.Command.MatchRom, 8);
+                sensor.Transfer(DS18B20.Command.MatchRom, DS18B20.TranferCounts.MatchRom);
             }
 
             //Start Temp Convertion nur Command
@@ -149,7 +196,7 @@ namespace DS18B20UART
 
         }
 
-        static void ReadScratchPad()
+        static void ReadScratchPad(ref DS18B20 sensor)
         {
 
             //********************* Read Scratchpad ********************************
@@ -161,31 +208,28 @@ namespace DS18B20UART
             }
 
             //Select Sensor
-            Console.WriteLine("Read Scratchpad");
-            Console.Write("Sensor Address:\t");
-
-            PrintBytes(sensor.BufferToBytes(8, 8));
+            Console.WriteLine("Read Scratchpad für Sensor:\t{0}", sensor.GetSensorAddress());  
 
             //Transfer Command und Sensor Adresse 8 Bytes
-            sensor.Transfer(DS18B20.Command.MatchRom,8);
-            bytes = sensor.Transfer(DS18B20.Command.ReadScratchpad, 9);
+            sensor.Transfer(DS18B20.Command.MatchRom, DS18B20.TranferCounts.MatchRom);
+            ScratchPad=sensor.Transfer(DS18B20.Command.ReadScratchpad, DS18B20.TranferCounts.ReadScratchpad);
 
-            Console.Write("Scratchpad:\t");
-            PrintBytes(bytes);
+            Console.Write("Scratchpad:\t\t\t");
+            //PrintBytes(ScratchPad.Serialize());
+            Console.WriteLine(ScratchPad);
 
+           
+            Console.Write("Check CRC\t\t\t{0:x2} ", DS18B20.CRC8(ScratchPad));
+            Console.WriteLine("{0}", ScratchPad.CheckCRC() ? "OK" : "Fehler");
+
+            Console.WriteLine("Configregister:\t\t\t{0:x2}", (byte)ScratchPad.ConfigRegister);
 
 
             Console.ForegroundColor = ConsoleColor.Red;
-            Console.WriteLine("Temp: {0}°C\r\n", sensor.GetTemp());
+            Console.WriteLine("Temp: {0:F4}°C\r\n", ScratchPad.GetTemp());
             Console.ResetColor();
-        }
-
-        static void PrintBytes(byte[] b)
-        {
-            for (byte ix = 0; ix < b.Length - 1; ix++) Console.Write("{0:x2}:", b[ix]);
-            Console.WriteLine("{0:x2}", b[b.Length - 1]);
-
-        }
-    } 
+        }     
+        
+    }
 
 }

@@ -1,14 +1,15 @@
 ﻿using System;
 using System.IO.Ports;
+using System.Collections;
 
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using System.Runtime.InteropServices;
-
-
-
+using System.IO;
+using System.Runtime.Serialization.Formatters.Binary;
+using System.Text.RegularExpressions;
 
 namespace DS18B20UART_OW
 {
@@ -16,29 +17,29 @@ namespace DS18B20UART_OW
     {
 
         enum Bit { HIGH, LOW};
-        public enum Command {Search=0xF0,ReadRom=0x33,MatchRom=0x55,ConvertT=0x44, ReadScratchpad=0xbe, SkipRom=0xcc }
-
+        public enum Command:byte {Search=0xF0,ReadRom=0x33,MatchRom=0x55,ConvertT=0x44, ReadScratchpad=0xbe, SkipRom=0xcc, WriteScratchpad=0x4e }
+        public enum TranferCounts:byte { ReadScratchpad=9, MatchRom=8, WriteScratchpad=3}
         SerialPort _sPort;
-
+       
         public byte[] Buffer;
         private byte Bit_last_Conflict_pos;
-        private const double Temp12 = 0.0625;
-        private const double Temp11 = 0.125;
-        private const double Temp10 = 0.25;
-        private const double Temp9 = 0.5;
         public byte Devices;  
        
         bool LastDevice;
+       
 
  
 
         public DS18B20(string Port)
         {
             _sPort = new SerialPort();
+            _sPort.ReadTimeout = 1000;
+            _sPort.DataReceived += _sPort_DataReceived;
 
             //Command 1byte + Scratch 9byte oder Rom 8 byte 0-7 Command 8- Data
             //Ein Byte im Buffer entspricht einem Bit
             Buffer = new byte[8 * 10];
+            _sPort.ReadBufferSize = 8 * 10;
 
             _sPort.PortName = Port;
             _sPort.DataBits = 8;
@@ -52,6 +53,17 @@ namespace DS18B20UART_OW
 
         }
 
+        private void _sPort_DataReceived(object sender, SerialDataReceivedEventArgs e)
+        {
+            SerialPort s = (SerialPort)sender;
+            //Console.WriteLine("Data da {0}",s.BytesToRead.ToString());
+           // int offset = 0;
+           // if (s.BytesToRead > 8) offset = 8;
+           // _sPort.Read(Buffer, offset, s.BytesToRead);
+           // tasklock = false;
+           
+        }
+
         ~DS18B20()
         {
             _sPort.Close();
@@ -61,15 +73,19 @@ namespace DS18B20UART_OW
         {
 
             _sPort.BaudRate = 9600;
+
+           
             Buffer[0] = 0xF0;
-            WriteCommandToPort(1); 
+            //WriteCommandToPort(1); 
+            WriteToPort(1);
 
             if (Buffer[0] != 0xF0)
             {
                if(Devices < 1 ) Devices = 1;
-                _sPort.BaudRate = 115200;
+                _sPort.BaudRate = 115200;              
                 return true;
             }
+            
             return false;
         }
         /// <summary>
@@ -77,14 +93,17 @@ namespace DS18B20UART_OW
         /// </summary>
         /// <param name="Address">Referenz auf Byte Array, gibt Adresse zurück</param>
         /// <returns>Letzter sensor = false</returns>
-       public bool Search(ref byte[] Address)
+        //public bool Search(ref byte[] Address)
+        public bool Search(ref DS18B20_Address Address)
         {
+         
             if (LastDevice || Devices < 1 ) return true;
 
-            ByteToBuffer(Command.Search, 0);
+           
+            ByteToBuffer(Command.Search);
             //Send Command
-            WriteCommandToPort(8);
-
+            //WriteCommandToPort(8);
+            WriteToPort(8);
             System.Threading.Thread.Sleep(5);
 
             //Clear Data Buffer(+8) from last Conflict
@@ -93,10 +112,11 @@ namespace DS18B20UART_OW
             for (byte BitsPos = 0; BitsPos < 8 * 8; BitsPos++)
             {
 
-                ByteToBuffer(3, 0); //0b00000011
+                ByteToBuffer(3); //0b00000011
 
                 //Get Payload
-                WriteCommandToPort(2);
+                //WriteCommandToPort(2);
+                WriteToPort(2);
 
 
                 switch (BufferToBytes(0,1)[0])
@@ -123,12 +143,13 @@ namespace DS18B20UART_OW
                 }
                 //Im Datenbuffer ist das nächste Kommando enthalen
                 Buffer[0] = Buffer[BitsPos + 8];
-                WriteCommandToPort(1);
-
+                //WriteCommandToPort(1);
+                WriteToPort(1);
             }
 
             //aktuelles Ergebniss speichern
-            Address = BufferToBytes(8,8);
+            //Address = BufferToBytes(8,8);
+            Address = GetSensorAddress();
 
             //Pfad,Buffer für nächsten Durchlauf vorbereiten
             if (Buffer[Bit_last_Conflict_pos + 8] != 0xFF && Bit_last_Conflict_pos!=0)
@@ -138,6 +159,8 @@ namespace DS18B20UART_OW
                 LastDevice = false;
             }
             else LastDevice = true;
+
+          
             return false;
 
         }
@@ -152,52 +175,83 @@ namespace DS18B20UART_OW
 
         public byte[] Transfer(Command command)
         {
-            return Transfer(command, 0);
+            return Transfer(command, (byte)0);
         }
+
+        public byte[] Transfer(Command command, TranferCounts count)
+        {
+            return Transfer(command, (byte)count);
+        }
+
+
 
         public byte[] Transfer(Command command, byte count)
         {
+           
           
            if(command == Command.ReadScratchpad || command == Command.ReadRom)
                     for (int ix = 0; ix < 8 * (count+1); ix++) Buffer[ix] = 0xFF;
 
-            ByteToBuffer(command, 0);
+            ByteToBuffer(command);
             //Send Command
-            WriteCommandToPort(8);
+            //WriteCommandToPort(8);
+            WriteToPort(8);
 
             System.Threading.Thread.Sleep(5);
 
-            if (count > 0) WriteDataToPort((byte)(count * 8));
- 
+            //if (count > 0) WriteDataToPort((byte)(count * 8));
+            if (count > 0) WriteToPort((byte)(count * 8));
+
             //return BufferToBytes(0,(byte)(count + 1));
+           
             return BufferToBytes(8, count);
-
         }
 
-        /// <summary>
-        /// Schreibe # Bits from Databuffer zum Port
-        /// </summary>
-        /// <param name="count">Nr. Bits to Write</param>
-        private void WriteDataToPort(byte count)
+ 
+        private void WriteToPort(byte count)
         {
 
-            _sPort.Write(Buffer, 8, count);
-            while (_sPort.BytesToRead != count) System.Threading.Thread.Sleep(1);
-            _sPort.Read(Buffer, 8, count);
+
+            //int sleep = 5;
+            int offset = 0;
+            _sPort.DiscardOutBuffer();
+
+            //Command oder Daten? Größer 8  Daten
+            if (count > 8) { offset = 8; }//sleep = 11; }
+            _sPort.ReceivedBytesThreshold = count;
+            _sPort.BaseStream.Write(Buffer, offset, count);
+           // Console.WriteLine("DEBUG Warte auf {0} Bytes", count.ToString());
+            //System.Threading.Thread.Sleep(sleep);
+
+
+            DateTime d = DateTime.Now;
+            DateTime max = d.AddMilliseconds(100);
+
+            while (_sPort.BytesToRead != count && d < max)
+            {
+                d = DateTime.Now;
+                System.Threading.Thread.Sleep(1);
+            }
+
+            if (d < max)
+            {
+                if (_sPort.BytesToRead == count)
+                {
+                    //  Console.WriteLine("DEBUG Lese {0} Bytes im Buffer", _sPort.BytesToRead.ToString());
+                    //System.Threading.Thread.Sleep(1);
+                    _sPort.Read(Buffer, offset, _sPort.BytesToRead);
+                }
+                else Console.WriteLine("DEBUG Lesebuffer ungleich der erwarteten Bytes");
+            }
+            else
+            {
+                Console.WriteLine("DEBUG TimeOut bei WriteToPort");
+            }
 
         }
 
 
-        /// <summary>
-        /// Schreibe # Bits vom Commandbuffer zum Port
-        /// </summary>
-        /// <param name="count">Nr. Bits to Write</param>
-        private void WriteCommandToPort(byte count)
-        {
-            _sPort.Write(Buffer, 0, count);
-            while (_sPort.BytesToRead != count) System.Threading.Thread.Sleep(1);
-            _sPort.Read(Buffer, 0, count);
-        }
+ 
 
         /// <summary>
         /// Verteilt Bits eines Byte an angegebener Position in den Buffer.
@@ -206,7 +260,7 @@ namespace DS18B20UART_OW
         /// </summary>
         /// <param name="b">Byte</param>
         /// <param name="pos">Byte Position im Buffer</param>
-        public void ByteToBuffer(byte b, byte pos)
+        private void ByteToBuffer(byte b, byte pos = 0)
         {
             byte rol = 0x1;
 
@@ -217,9 +271,9 @@ namespace DS18B20UART_OW
                 rol <<= 1;
             }
         }
-        private void ByteToBuffer(Command c, byte pos)
+        private void ByteToBuffer(Command c)
         {
-            ByteToBuffer((byte)c, pos);
+            ByteToBuffer((byte)c, 0);
         }
 
         /// <summary>
@@ -230,7 +284,7 @@ namespace DS18B20UART_OW
         /// <param name="offset">Postition im Buffer</param>
         /// <param name="count">Anzahl Bit-Bytes</param>
         /// <returns></returns>
-        public byte[] BufferToBytes(byte offset, byte count)
+        private byte[] BufferToBytes(byte offset, byte count)
         {
 
             byte[] bytes;
@@ -256,18 +310,165 @@ namespace DS18B20UART_OW
             return bytes;
         }
 
-        public double GetTemp()
+        public DS18B20_Address GetSensorAddress()
         {
+            byte[] b = BufferToBytes(8, 8);
+            Array.Reverse(b);//Ist verkehrt im Buffer
+            return new DS18B20_Address(b);
+        }
 
-            double t_result;
-            byte[] bytes = BufferToBytes(8, 2);
-            int t = (bytes[1] << 8) | bytes[0];
-            if ((t & 0xf800) != 0) t_result = -(double)~(t - 1);
-            else t_result = t;
-            t_result *= Temp12;
+        public void SetSensorAddress(DS18B20_Address Address)
+        {
+            byte[] b = Address;
+            Array.Reverse(b); //Muss umgekehrt in den Buffer;
+            for (byte ix = 0; ix < 8; ix++) ByteToBuffer(b[ix], (byte)(ix + 1));
+        }
+		
+		public void SetSensorAddress(string stringAD)
+        {
+            //DS18B20_Address Ad = 
+            byte[] b = new DS18B20_Address(stringAD); 
+            Array.Reverse(b); //Muss umgekehrt in den Buffer;
+            for (byte ix = 0; ix < 8; ix++) ByteToBuffer(b[ix], (byte)(ix + 1));
+        }
 
-            return t_result;
+        public void Scratchpad2Buffer(byte[] sp)
+        {
+            for (byte ix = 0; ix < 3; ix++) ByteToBuffer(sp[ix], (byte)(ix + 1));
+        }
+
+        public static byte CRC8(byte[] check)
+        {
+            int crc = 0;            
+
+            for (int x = check.Length-1; x > 0; x--)
+            {
+                int inbyte = check[x];
+
+                for (byte i = 0; i<8; i++)
+                {
+                   int mix = (crc ^ inbyte) & 0x01;
+                    crc >>= 1;
+                    if (mix!=0) crc ^= 0x8C;
+                    inbyte >>= 1;
+                }
+            }
+            return (byte)crc;
+        }
+
+    }
+
+    class DS18B20_Address
+    {
+        public enum Device : byte { Device18B20 = 0x28 }
+
+        public byte CRC;
+        public byte[] SerialNumber = new byte[6];
+        public Device FamilyCode;
+        private string _address;
+        public string Address
+        {
+            get
+            {
+                _address = String.Format("{0:x2}:{1:x2}:{2:x2}:{3:x2}:{4:x2}:{5:x2}:{6:x2}:{7:x2}", CRC, SerialNumber[0], SerialNumber[1], SerialNumber[2], SerialNumber[3], SerialNumber[4], SerialNumber[5], (byte)FamilyCode);
+                return _address;
+            }
+            set
+            {
+                Regex rx = new Regex(@"^[0-9a-f].:[0-9a-f].:[0-9a-f].:[0-9a-f].:[0-9a-f].:[0-9a-f].:[0-9a-f].:[0-9a-f].$", RegexOptions.IgnoreCase);
+
+                if (rx.IsMatch(value)) _address = value;
+                else _address = "00:00:00:00:00:00:00:00";
+
+                byte[] temp = new byte[8];
+
+                string[] t = _address.Split(':');
+
+                for (int ix = 0; ix < 8; ix++) temp[ix] = byte.Parse(t[ix],System.Globalization.NumberStyles.HexNumber);
+                DeSerialize(temp);
+            }
+        }
+        public bool CheckCRC()
+        {
+            return (DS18B20.CRC8(this) == CRC);
+        }
+
+        public DS18B20_Address()
+        {
+            Address = "00:00:00:00:00:00:00:00";
+        }
+        public DS18B20_Address(DS18B20_Address ad)
+        {
+            CRC = ad.CRC;
+            SerialNumber = (byte[])ad.SerialNumber.Clone();
+            FamilyCode = ad.FamilyCode;
+        }
+        public DS18B20_Address(string ad)
+        {
+            Address = ad;
+        }
+        public DS18B20_Address(byte[] b)
+        {
+            DeSerialize(b);
+        }
+
+        public void DeSerialize(byte[] bytes)
+        {
+            BinaryReader br = new BinaryReader(new MemoryStream(bytes));
+            CRC = br.ReadByte();
+            SerialNumber = br.ReadBytes(6);
+            FamilyCode = (Device)br.ReadByte();
 
         }
+
+        public static implicit operator byte[] (DS18B20_Address ad)
+        {
+            MemoryStream ms = new MemoryStream(8);
+            BinaryWriter bw = new BinaryWriter(ms);
+
+            bw.Write(ad.CRC);
+            bw.Write(ad.SerialNumber);
+            bw.Write((byte)ad.FamilyCode);
+
+            return ms.GetBuffer();
+
+        }
+
+        public override string ToString()
+        {
+            return Address;
+        }
+
+        public string ToString(string format)
+        {
+            String tmp = string.Empty;
+            //if (formatProvider == null) formatProvider = System.Globalization.CultureInfo.CurrentCulture;
+            switch (format)
+            {
+                case "SN":
+                    tmp = String.Format("{0:x2}:{1:x2}:{2:x2}:{3:x2}:{4:x2}:{5:x2}", SerialNumber[0], SerialNumber[1], SerialNumber[2], SerialNumber[3], SerialNumber[4], SerialNumber[5]);
+                    break;
+                case "DEV":
+                    switch(FamilyCode)
+                    {
+                        case Device.Device18B20:
+                            tmp = String.Format("18B20");
+                            break;
+                    }                
+                
+                break;
+
+                default:
+                    tmp = Address;
+                    break;
+            }
+            return tmp;
+
+        }
+
+  
     }
+
+
+   
 }
